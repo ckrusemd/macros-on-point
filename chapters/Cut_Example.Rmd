@@ -1,0 +1,297 @@
+---
+title: ""
+output: html_document
+---
+
+# Example: Cut Diet
+
+Source (Danish)
+
+* Fødevaredata (http://frida.fooddata.dk), version 4, 2019
+* Fødevareinstituttet, Danmarks Tekniske Universitet
+
+Source (English)
+
+* Food data (http://frida.fooddata.dk), version 4, 2019
+* The Food Institute, Technical University of Denmark
+
+
+```{r include=FALSE}
+
+options(scipen=999)
+
+library(openxlsx)
+library(tidyr)
+library(dplyr)
+library(lpSolveAPI)
+library(janitor)
+library(zoo)
+library(DT)
+library(shiny)
+library(lubridate)
+```
+
+## Load data
+
+```{r}
+
+temp_dir = tempdir()
+temp_dir
+
+```
+
+```{r}
+path = "/home/oem/Dropbox/R/macros-on-point/data"
+file_path = paste0(path , "/" , list.files(path = path) )
+file_path
+```
+
+```{r}
+
+unzip(file_path,exdir = tempdir())
+list.files(tempdir())
+```
+
+
+## Display example data table
+
+```{r}
+
+english_file = "Frida20190802env3.xlsx"
+sheet_name = "Frida_20190802"
+
+df = openxlsx::read.xlsx(xlsxFile = paste0(tempdir(),"/",english_file),sheet=sheet_name)
+df %>% 
+  head() %>% 
+  DT::datatable(options = list(scrollX = TRUE))
+```
+
+## Clean data table
+
+```{r}
+
+df_clean = df %>% 
+  slice(2:nrow(.)) %>% 
+  dplyr::select(-X1) %>% 
+  dplyr::rename(Group=X2,
+                Name=X3)
+df_clean %>% 
+  head() %>% 
+  DT::datatable(options = list(scrollX = TRUE))
+```
+
+
+## Tidy Data
+
+```{r}
+
+df_basic_tidy = df_clean %>% 
+  dplyr::select(Group,
+                Name,
+                `Energy,.kcal`,
+                `Protein,.videnskabelig`,
+                `Carbohydrate,.declaration`,
+                `Dietary.fiber`,
+                `Fat,.total`,
+                Alcohol) %>% 
+  setNames(.,c("Group","Name","Kcal","Protein","Carbohydrates","Fiber","Fat","Alcohol")) %>% 
+  group_by(Group,Name) %>% 
+  filter(n()==1) %>% 
+  ungroup() %>% 
+  gather(Metric,Value,Kcal:Alcohol) %>% 
+  dplyr::mutate(Value=as.numeric(Value)) 
+
+df_basic_tidy %>% 
+  head() %>% 
+  DT::datatable(options = list(scrollX = TRUE))
+
+```
+
+
+## Spread data
+
+```{r}
+
+df_basic = df_basic_tidy %>% 
+  spread(Metric,Value)
+
+df_basic %>% 
+  head() %>% 
+  DT::datatable(options = list(scrollX = TRUE))
+
+```
+
+
+## Settings
+
+```{r echo=FALSE}
+
+weight_kg = 87
+age = as.integer(floor(difftime(Sys.Date(),dmy("25-11-1986"),units = "weeks")/52))
+height = 185
+
+# bmr = 88.362 + (13.397*weight) + (4.799*height) - (5.677*age)
+bmr = 10*weight_kg+6.25*height-5*age+5 
+
+protein_per_kg = 2
+fibre_per_kg = 1/3
+fat_per_kg = 0.6
+
+decided_deficit_kcal = 500
+
+```
+
+
+## Functions
+
+```{r echo=FALSE}
+
+## Opskriftsfunktion
+calculate_contents = function(Dataframe,Names,Grams) {
+  return(
+Dataframe %>% 
+  dplyr::select(Name,Kcal,Protein,Fat,Carbohydrates,Fiber) %>% 
+  inner_join(data.frame(Navn=Names,Gram=Gram)) %>% 
+  dplyr::mutate(Kcal=Kcal*Gram/100,
+                Protein=Protein*Gram/100,
+                Fat=Fat*Gram/100,
+                Carbohydrates=Carbohydrates*Gram/100,
+                Fiber=Fiber*Gram/100))
+}
+```
+
+## Optimization algorithm
+
+```{r echo=FALSE,results='hide'}
+
+### OBJECT
+lprec <- make.lp(0, nrow(df_basic))
+lprec.ctrl = lp.control(lprec,sense='min')
+set.objfn(lprec, df_basic$Kcal)
+
+### MACROS
+add.constraint(lprec, df_basic$Fat, "=", weight_kg*fat_per_kg*7) 
+add.constraint(lprec, df_basic$Fiber, ">=", weight_kg*fibre_per_kg*7) 
+add.constraint(lprec, df_basic$Protein, "=", weight_kg*protein_per_kg*7) 
+
+### DF SETTINGS
+RowNames <- c("Fat", "Fiber", "Protein")
+ColNames <- df_basic$Name
+
+solve(lprec)
+```
+
+## Results
+
+```{r echo=FALSE}
+
+df.solved <- df_basic %>% 
+    dplyr::mutate(Amount=round(100*get.variables(lprec))) %>% 
+    filter(Amount>0)
+
+df.solved %>% 
+  DT::datatable(options = list(scrollX = TRUE)) %>% 
+  formatRound(c('Kcal','Protein','Fat','Carbohydrates','Fiber','Alcohol','Amount'),0)
+
+
+```
+
+
+## Total
+
+```{r echo=FALSE}
+df_solved.total = 
+  df.solved %>% 
+  dplyr::mutate(Kcal=Kcal*Amount/100) %>% 
+  dplyr::mutate(Protein=Protein*Amount/100) %>% 
+  dplyr::mutate(Fat=Fat*Amount/100) %>% 
+  dplyr::mutate(Carbohydrates=Carbohydrates*Amount/100) %>% 
+  dplyr::mutate(Fiber=Fiber*Amount/100) %>% 
+  dplyr::mutate(Alcohol=Alcohol*Amount/100) %>%
+  dplyr::mutate(Amount_Per_Day=Amount/7) %>%
+  adorn_totals("row")
+
+df_solved.total %>% 
+  DT::datatable(options = list(scrollX = TRUE)) %>% 
+  formatRound(c('Kcal','Protein','Fat','Carbohydrates','Fiber','Alcohol','Amount','Amount_Per_Day'),0)
+
+```
+
+
+## Per Day
+
+```{r echo=FALSE}
+df_solved.total %>% 
+  add_row(Group="Per Day",
+          Name="-",
+          Kcal=.$Kcal[nrow(.)]/7,
+          Protein=.$Protein[nrow(.)]/7,
+          Fat=.$Fat[nrow(.)]/7,
+          Carbohydrates=.$Carbohydrates[nrow(.)]/7,
+          Fiber=.$Fiber[nrow(.)]/7,
+          Alcohol=.$Alcohol[nrow(.)]/7) %>% 
+  slice(nrow(.)) %>% 
+  DT::datatable(options = list(scrollX = TRUE)) %>% 
+  formatRound(c('Kcal','Protein','Fat','Carbohydrates','Fiber','Alcohol','Amount','Amount_Per_Day'),0)
+```
+
+
+## Per Kg Per Day
+
+```{r echo=FALSE}
+
+df_solved.total %>% 
+  add_row(Group="Per Day",
+          Name="-",
+          Kcal=.$Kcal[nrow(.)]/7,
+          Protein=.$Protein[nrow(.)]/7,
+          Fat=.$Fat[nrow(.)]/7,
+          Carbohydrates=.$Carbohydrates[nrow(.)]/7,
+          Fiber=.$Fiber[nrow(.)]/7,
+          Alcohol=.$Alcohol[nrow(.)]/7) %>% 
+  add_row(Group="Per Kg/Day",
+          Name="-",
+          Kcal=.$Kcal[nrow(.)]/weight_kg,
+          Protein=.$Protein[nrow(.)]/weight_kg,
+          Fat=.$Fat[nrow(.)]/weight_kg,
+          Carbohydrates=.$Carbohydrates[nrow(.)]/weight_kg,
+          Fiber=.$Fiber[nrow(.)]/weight_kg,
+          Alcohol=.$Alcohol[nrow(.)]/weight_kg) %>% 
+  slice(nrow(.)) %>% 
+  DT::datatable(options = list(scrollX = TRUE)) %>% 
+  formatRound(c('Kcal','Protein','Fat','Carbohydrates','Fiber','Alcohol','Amount','Amount_Per_Day'),2)
+  
+```
+
+## Necessary steps per day
+
+```{r echo=FALSE}
+
+target_kcal = bmr-decided_deficit_kcal
+
+optimized_kcal_per_day = df_solved.total$Kcal[nrow(df_solved.total)]/7
+
+gap = (optimized_kcal_per_day-target_kcal)/7-decided_deficit_kcal
+
+necessary_steps = gap/55*1000
+if (necessary_steps<0) {
+  msg = "You don't need to walk extra to reach this deficit." 
+} else {
+  msg = paste0("You will need to walk ",necessary_steps," steps every day.")
+}
+
+```
+
+You have requested a calorie deficit of `r decided_deficit_kcal`.
+
+Your BMR is `r bmr`.
+
+Your calorie intake will be `r round(optimized_kcal_per_day)`.
+
+`r msg`.
+
+
+
+
+
+

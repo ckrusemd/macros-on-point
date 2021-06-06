@@ -1,0 +1,39 @@
+--- 
+title: "Macros on Point"
+author: "Christian Kruse"
+date: "`r Sys.Date()`"
+site: bookdown::bookdown_site
+output: bookdown::gitbook
+documentclass: book
+bibliography: [book.bib, packages.bib]
+biblio-style: apalike
+link-citations: yes
+github-repo: ckrusemd/denmark-covid-incidence
+description: ""
+knit: (function(inputFile, encoding) { 
+    rmarkdown::render(inputFile,
+                      encoding=encoding, 
+                      output_file=file.path('index.html')) })
+---
+
+
+```{r include=FALSE}
+knitr::write_bib(c(
+  .packages(), 'bookdown', 'knitr', 'rmarkdown'
+), 'packages.bib')
+```
+
+# Macros on Point
+
+Based on the Danish [DTU Frida](https://frida.fooddata.dk/) database of nutritional content, this is a bookdown that applies linear programming through the **lpSolveAPI** to optimize a diet program based on constraints.
+
+I have used it myself for bulking and cutting weigt in weightlifting, and it could definitely serve other purposes in plant based diets, keto diets etc, if you're willing to contribute with a pull request (or I'll do it later on).
+
+You will need to register at [DTU Frida](https://frida.fooddata.dk/) to gain access to the dataset. Here's a quick guide:
+
+```
+1. Visit [FRIDA at DTU](https://frida.fooddata.dk/data?)
+2. Provide your **Full name** and **e-mail address**
+3. Await an e-mail in your inbox with a download link. The download link will look something like **https://frida.fooddata.dk/data/download/.../...**
+4. Leave the zip-file in the data directory of the repo once you've cloned/downloaded it. 
+```

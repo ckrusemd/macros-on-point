@@ -1,0 +1,3 @@
+rmd_files: ["index.Rmd",
+"chapters/Cut_Example.Rmd"]
+output_dir: "docs"

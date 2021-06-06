@@ -1,0 +1,15 @@
+macros-on-point
+example-cut-diet
+load-data
+display-example-data-table
+clean-data-table
+tidy-data
+spread-data
+settings
+functions
+optimization-algorithm
+results
+total
+per-day
+per-kg-per-day
+necessary-steps-per-day
